@@ -1,0 +1,31 @@
+[package]
+name = "live-relay"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "relay-server"
+path = "src/bin/server.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = {version = "1.0", features = ["preserve_order"]}
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.1.6", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "*"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+toml = "0.7.2"
+thiserror = "1"
+rocksdb = "0.20.1"
+bytes = "1.4.0"
+futures-util = "0.3.26"
+tempfile = "3.4.0"
+secp256k1 = {version = "0.21", features = ["rand", "rand-std", "serde", "bitcoin_hashes"] }
+hex = { version = "0.4", features = ["serde"] }
+lazy_static = "1.4.0"
