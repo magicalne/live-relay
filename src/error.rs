@@ -36,4 +36,8 @@ pub enum RelayError {
     /// Validate ReqFilter
     #[error("Invalid filter request: {0:?}")]
     ReqMsgInvalid(Filter),
+
+    /// WebRTC error
+    #[error(transparent)]
+    WebRTCError(#[from] webrtc::Error),
 }

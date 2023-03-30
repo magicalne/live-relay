@@ -2,10 +2,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
+use std::sync::Mutex;
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
+use tracing::info;
 
 use crate::entity::NostrMessage;
 use crate::error::RelayError;
@@ -23,19 +24,25 @@ use crate::Result;
 ///
 /// When sending frames, the frame is first encoded into the write buffer.
 /// The contents of the write buffer are then written to the socket.
-#[derive(Debug, Clone)]
+
+/// FIXME: turn this to actor style
+#[derive(Debug)]
 pub struct Connection {
-    peer: Arc<SocketAddr>,
-    stream: Arc<Mutex<WebSocketStream<TcpStream>>>,
+    peer: SocketAddr,
+    sink: futures_util::stream::SplitSink<WebSocketStream<TcpStream>, Message>,
+    stream: futures_util::stream::SplitStream<WebSocketStream<TcpStream>>,
 }
 
 impl Connection {
     /// Create a new `Connection`, backed by `socket`. Read and write buffers
     /// are initialized.
     pub fn new(stream: WebSocketStream<TcpStream>, peer: SocketAddr) -> Connection {
+        let (sink, stream) = stream.split();
         Connection {
-            stream: Arc::new(Mutex::new(stream)),
-            peer: Arc::new(peer),
+            sink,
+            stream,
+            //stream: Arc::new(Mutex::new(stream)),
+            peer,
         }
     }
 
@@ -51,8 +58,8 @@ impl Connection {
     /// is closed in a way that doesn't break a frame in half, it returns
     /// `None`. Otherwise, an error is returned.
     pub async fn read_frame(&mut self) -> Result<Option<NostrMessage>> {
-        let mut stream = self.stream.lock().await;
-        return match stream.next().await {
+        let next = self.stream.next();
+        return match next.await {
             Some(Ok(Message::Text(txt))) => Ok(Some(serde_json::from_str(&txt)?)),
             Some(Ok(Message::Binary(buf))) => Ok(Some(serde_json::from_slice(&buf)?)),
             None | Some(Ok(_)) => Ok(None),
@@ -68,10 +75,11 @@ impl Connection {
     /// syscalls. However, it is fine to call these functions on a *buffered*
     /// write stream. The data will be written to the buffer. Once the buffer is
     /// full, it is flushed to the underlying socket.
-    pub async fn write_frame(&self, response: String) -> Result<()> {
+    pub async fn write_frame(&mut self, response: String) -> Result<()> {
+        self.sink
         let msg = Message::Text(response);
-        let mut stream = self.stream.lock().await;
-        stream.send(msg).await?;
+        info!("write frame: {}", &msg);
+        self.sink.send(msg).await?;
         Ok(())
     }
 }

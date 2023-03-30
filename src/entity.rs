@@ -17,6 +17,8 @@ use crate::{error::RelayError, SECP};
 pub const EVENT: &str = "EVENT";
 pub const REQ: &str = "REQ";
 pub const CLOSE: &str = "CLOSE";
+/// used to notify clients if an EVENT was successful
+pub const OK: &str = "OK";
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum NostrMessage {

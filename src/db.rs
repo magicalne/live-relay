@@ -18,7 +18,7 @@ type CF = &'static str;
 /// Event
 /// Key: pub_key-timestamp-id[:4]
 /// Value: Event JSON
-const EVENT: CF = "EVENT";
+const EVENT_CF: CF = "EVENT";
 
 /// Event Tag
 /// Key: hex event id [u8; 32]-timestamp-id[:4]
@@ -43,9 +43,9 @@ const KIND: CF = "KIND";
 /// Event ID
 /// Key: id
 /// Value: pub_key-timestamp-id[:4]
-const EVENT_ID: CF = "EVENT_ID";
+const EVENT_ID_CF: CF = "EVENT_ID";
 
-const COLUMN_FAMILIES: &[&str; 5] = &[EVENT, EVENT_TAG_CF, PUBKEY_TAG_CF, EVENT_ID, KIND];
+const COLUMN_FAMILIES: &[&str; 5] = &[EVENT_CF, EVENT_TAG_CF, PUBKEY_TAG_CF, EVENT_ID_CF, KIND];
 /// default limit on query result
 const LIMIT: usize = 20;
 
@@ -395,7 +395,7 @@ impl DB {
     }
 
     pub fn get_event_by_id(&self, id: &[u8]) -> crate::Result<Option<Event>> {
-        let cf = self.db.cf_handle(EVENT).unwrap(); // Safe to unwrap, the cf must be created.
+        let cf = self.db.cf_handle(EVENT_CF).unwrap(); // Safe to unwrap, the cf must be created.
         let v = self.db.get_cf(cf, id)?;
         let event = v.map(|v| serde_json::from_slice(&v).map_err(RelayError::SerdeError));
         event.transpose()
@@ -407,7 +407,7 @@ impl DB {
         limit: usize,
         last_cursor: Option<Vec<u8>>,
     ) -> crate::Result<Vec<Event>> {
-        let cf = self.db.cf_handle(EVENT_ID).unwrap();
+        let cf = self.db.cf_handle(EVENT_ID_CF).unwrap();
         let tx = self.db.transaction();
         let mut scan = RangeScan::new(cf, &tx, limit);
         scan.set_lower_bound(id.to_vec());
@@ -435,7 +435,7 @@ impl DB {
         limit: usize,
         last_cursor: Option<Vec<u8>>,
     ) -> crate::Result<Vec<Event>> {
-        let event_cf = self.db.cf_handle(EVENT).unwrap();
+        let event_cf = self.db.cf_handle(EVENT_CF).unwrap();
         let mut readopts: ReadOptions = Default::default();
         let mut lower = Vec::with_capacity(32 + 8);
         lower.extend_from_slice(pubkey);
@@ -467,7 +467,7 @@ impl DB {
         last_cursor: Option<Vec<u8>>,
         limit: usize,
     ) -> crate::Result<Vec<Event>> {
-        let event_cf = self.db.cf_handle(EVENT).unwrap();
+        let event_cf = self.db.cf_handle(EVENT_CF).unwrap();
         let mut readopts: ReadOptions = Default::default();
         readopts.set_iterate_range(PrefixRange(pubkey));
         let tx = self.db.transaction();
@@ -595,7 +595,7 @@ impl DB {
     }
 
     pub fn put_event(&self, event: &Event) -> crate::Result<()> {
-        let event_cf = self.db.cf_handle(EVENT).unwrap(); // Safe to unwrap, the cf must be created.
+        let event_cf = self.db.cf_handle(EVENT_CF).unwrap(); // Safe to unwrap, the cf must be created.
         let tx = self.db.transaction();
         // store raw event
         let event_id = &event.id;
@@ -610,7 +610,7 @@ impl DB {
 
         let index_val = k;
         // save event index
-        let event_id_cf = self.db.cf_handle(EVENT_ID).unwrap();
+        let event_id_cf = self.db.cf_handle(EVENT_ID_CF).unwrap();
         tx.put_cf(event_id_cf, &event_id, &index_val)?;
 
         // save kind
@@ -622,8 +622,8 @@ impl DB {
         tx.put_cf(kind_cf, &buf, &index_val)?;
 
         // save tags
-        let event_tag_cf = self.db.cf_handle(EVENT_TAG).unwrap();
-        let pubkey_tag_cf = self.db.cf_handle(PUBKEY_TAG).unwrap();
+        let event_tag_cf = self.db.cf_handle(EVENT_TAG_CF).unwrap();
+        let pubkey_tag_cf = self.db.cf_handle(PUBKEY_TAG_CF).unwrap();
         if let Some(tags) = &event.tags {
             for t in tags {
                 match t.name.as_str() {

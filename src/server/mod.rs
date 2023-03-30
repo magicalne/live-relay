@@ -1,3 +1,4 @@
+use serde_json::Value;
 use std::{
     collections::HashMap,
     future::Future,
@@ -14,17 +15,23 @@ use tokio::{
 };
 use tokio_tungstenite::accept_async;
 use tracing::trace;
+use webrtc::{
+    peer_connection::sdp::session_description::RTCSessionDescription,
+    track::track_local::TrackLocal,
+};
 
 use crate::{
     config::Config,
     db::{DbDropGuard, DB},
-    entity::{NostrMessage, ReqMsg},
+    entity::{Event, NostrMessage, ReqMsg, EVENT},
     server::connection::Connection,
     shutdown::Shutdown,
 };
 
-mod cmd;
-mod connection;
+use self::cmd::{LIVE_STREAMING_ANSWER_KIND, LIVE_STREAMING_OFFER_KIND};
+
+pub mod cmd;
+pub mod connection;
 mod shutdown;
 const MAX_CONNECTIONS: usize = 200;
 
@@ -263,18 +270,26 @@ impl Handler {
             debug!(?msg);
             match msg {
                 NostrMessage::EventMsg(event) => {
-                    cmd::apply_event(&event, &self.db, &mut self.connection).await?
+                    if let Err(err) = cmd::apply_event(&event, &self.db, &mut self.connection).await
+                    {
+                        error!("Apply event error: {:?}", err);
+                    }
                 }
                 NostrMessage::ReqMsg(req) => {
                     let sub_id = req.subscription_id.clone();
-                    let sender = cmd::apply_request(
+                    match cmd::apply_request(
                         req.subscription_id,
                         req.filters,
                         self.db.clone(),
-                        self.connection.clone(),
+                        &mut self.connection,
                     )
-                    .await?;
-                    self.filter_tasks.insert(sub_id, sender);
+                    .await
+                    {
+                        Ok(sender) => {
+                            self.filter_tasks.insert(sub_id, sender);
+                        }
+                        Err(err) => error!("Apply req error: {:?}", err),
+                    }
                 }
                 NostrMessage::CloseMsg(close) => {
                     if let Some(sender) = self.filter_tasks.remove(&close.subscription_id) {

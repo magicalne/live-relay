@@ -10,18 +10,18 @@ use tracing::{debug, trace, warn};
 
 use crate::{
     db::{Query, DB},
-    entity::{Event, Filter},
+    entity::{Event, Filter, EVENT, OK},
 };
 
 use super::connection::Connection;
 
-/// used to notify clients if an EVENT was successful
-const OK: &str = "OK";
-/// used to send events requested by clients.
-const EVENT: &str = "EVENT";
-
 /// default limit on query result
 const LIMIT: usize = 20;
+
+/// Ephemeral Events
+/// 20000 <= n < 30000
+pub const LIVE_STREAMING_OFFER_KIND: u32 = 21111;
+pub const LIVE_STREAMING_ANSWER_KIND: u32 = 21112;
 
 /// https://github.com/nostr-protocol/nips/blob/master/20.md
 struct CommandResult<'a> {
@@ -127,6 +127,14 @@ pub(crate) async fn apply_event(
     db: &DB,
     conn: &mut Connection,
 ) -> crate::Result<()> {
+    // Ephemeral events are no to be stored.
+    // Handle live streaming webrtc negotiation.
+    if event.kind == LIVE_STREAMING_OFFER_KIND {
+        let offer = serde_json::from_str(&event.content)?;
+        let pc = crate::webrtc::Connection::from_offer(offer).await?;
+        pc.create_answer().await?;
+        return Ok(());
+    }
     let cmd_result = match event.validate_sig() {
         // TODO: spawn_blocking
         Ok(_) => match db.put_event(event) {
@@ -151,11 +159,18 @@ pub(crate) async fn apply_event(
     Ok(())
 }
 
+pub async fn apply_notice(conn: &mut Connection, msg: String) -> crate::Result<()> {
+    let value = json!(["NOTICE", msg]);
+    let response = serde_json::to_string(&value)?;
+    conn.write_frame(response).await?;
+    Ok(())
+}
+
 pub(crate) async fn apply_request(
     sub_id: String,
     filters: Vec<Filter>,
     db: DB,
-    conn: Connection,
+    conn: &mut Connection,
 ) -> crate::Result<oneshot::Sender<()>> {
     let (tx, rx) = oneshot::channel();
 

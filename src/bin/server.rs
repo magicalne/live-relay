@@ -14,7 +14,7 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
-    /// Adds files to myapp
+    /// run with config file: --config config.toml
     Run {
         #[arg(short, long, value_name = "FILE")]
         config: PathBuf,
